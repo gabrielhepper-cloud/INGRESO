@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Ingreso - DNI Scanner</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1e40af">
+    
+    <style>
+        /* Ajuste para que el lector de cámara se vea limpio y no rompa el diseño */
+        #reader video {
+            object-fit: cover !important;
+            border-radius: 0.75rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+
+    <header class="bg-blue-800 text-white shadow-md p-4 sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                📋 Control de Accesos
+            </h1>
+            <span id="pwa-status" class="text-xs bg-blue-700 px-2 py-1 rounded-full text-blue-200">Local Storage Activo</span>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto w-full p-4 flex-grow space-y-6">
+
+        <div class="bg-white rounded-2xl shadow p-4 md:p-6">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                📷 Escanear Dorso del DNI (PDF417)
+            </h2>
+            
+            <div class="relative overflow-hidden bg-gray-900 rounded-xl max-w-sm mx-auto aspect-square flex items-center justify-center text-gray-400">
+                <div id="reader" class="w-full h-full"></div>
+            </div>
+            
+            <div class="flex justify-center gap-3 mt-4">
+                <button onclick="startScanner()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-xl transition shadow">
+                    Encender Cámara
+                </button>
+                <button onclick="stopScanner()" class="bg-gray-500 hover:bg-gray-600 text-white font-medium px-4 py-2 rounded-xl transition">
+                    Apagar
+                </button>
+            </div>
+        </div>
+
+        <div id="section-registro" class="bg-white rounded-2xl shadow p-4 md:p-6 hidden transition-all duration-300 border-l-8 border-blue-600">
+            <div class="flex justify-between items-start mb-4">
+                <h2 class="text-xl font-bold text-gray-800">Datos Detectados</h2>
+                <span id="badge-tipo-movimiento" class="px-3 py-1 text-sm font-bold rounded-full"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Documento (DNI)</p>
+                    <p id="res-dni" class="text-lg font-bold text-gray-900">-</p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Nombre Completo</p>
+                    <p id="res-nombre" class="text-lg font-bold text-gray-900">-</p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Sexo / Género</p>
+                    <p id="res-sexo" class="text-base text-gray-700">-</p>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha de Nacimiento</p>
+                    <p id="res-nacimiento" class="text-base text-gray-700">-</p>
+                </div>
+            </div>
+
+            <div id="div-observaciones" class="mt-4">
+                <label for="txt-observaciones" class="block text-sm font-semibold text-gray-700 mb-1">Observaciones / Comentarios (Opcional):</label>
+                <input type="text" id="txt-observaciones" placeholder="Ej: Trae herramientas, Visita a Oficina 3..." class="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none text-gray-800">
+            </div>
+
+            <div class="mt-5 flex justify-end gap-3">
+                <button onclick="cancelarRegistro()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium px-5 py-2.5 rounded-xl transition">
+                    Descartar
+                </button>
+                <button id="btn-confirmar-registro" onclick="procesarMovimiento()" class="text-white font-medium px-6 py-2.5 rounded-xl transition shadow">
+                    Confirmar
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-4 md:p-6">
+            <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                📊 Reportes y Exportación Excel
+            </h2>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-6">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1 uppercase">Fecha Desde:</label>
+                    <input type="date" id="fecha-desde" class="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm text-gray-700">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1 uppercase">Fecha Hasta:</label>
+                    <input type="date" id="fecha-hasta" class="w-full border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm text-gray-700">
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+                <button onclick="exportarExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2.5 rounded-xl transition shadow flex items-center gap-2 text-sm">
+                    💚 Exportar a Excel
+                </button>
+                <button onclick="limpiarTodaLaBase()" class="bg-red-50 hover:bg-red-100 text-red-600 font-medium px-4 py-2.5 rounded-xl transition text-sm ml-auto">
+                    ⚠️ Vaciar Registro
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow overflow-hidden">
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="font-bold text-gray-700 flex items-center gap-2">
+                    🟢 Personas actualmente adentro (<span id="count-adentro">0</span>)
+                </h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-gray-600">
+                    <thead class="bg-gray-100 text-xs text-gray-700 uppercase">
+                        <tr>
+                            <th class="p-3">DNI</th>
+                            <th class="p-3">Nombre</th>
+                            <th class="p-3">Ingreso (Hora)</th>
+                            <th class="p-3">Observaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-adentro" class="divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        let html5QrcodeScanner = null;
+        let objetoPersonaActual = null;
+        
+        let registrosLog = JSON.parse(localStorage.getItem('control_accesos_log')) || [];
+        let personasAdentro = JSON.parse(localStorage.getItem('control_accesos_adentro')) || {};
+
+        document.getElementById('fecha-desde').value = new Date().toISOString().split('T')[0];
+        document.getElementById('fecha-hasta').value = new Date().toISOString().split('T')[0];
+
+        actualizarVistas();
+
+        function emitirBeep() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 800;
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.15); 
+            } catch (e) {
+                console.log("No se pudo reproducir el audio: ", e);
+            }
+        }
+
+        function startScanner() {
+            if (html5QrcodeScanner) { stopScanner(); }
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            const config = { 
+                fps: 15, 
+                qrbox: { width: 280, height: 200 },
+                formatsToSupport: [ Html5QrcodeSupportedFormats.PDF_417, Html5QrcodeSupportedFormats.QR_CODE ]
+            };
+            html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+            .catch(err => alert("Error al acceder a la cámara: " + err));
+        }
+
+        function stopScanner() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => { html5QrcodeScanner = null; })
+                .catch(err => console.log("Error al detener cámara: ", err));
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            if (!decodedText || !decodedText.includes('@')) return;
+
+            const datosParseados = parsearDniArgentino(decodedText);
+            if (!datosParseados) return;
+
+            emitirBeep();
+            stopScanner();
+            objetoPersonaActual = datosParseados;
+            mostrarFormularioRegistro(datosParseados);
+        }
+
+        // Filtra y limpia textos de nombres/apellidos removiendo cualquier residuo extraño de escaneo
+        function limpiarTextoDni(texto) {
+            if (!texto) return "";
+            let resultado = texto.trim();
+            resultado = resultado.replace(/Ã‘/g, "Ñ").replace(/ÂÑ/g, "Ñ")
+                                 .replace(/Ã‰/g, "É").replace(/Ã /g, "Á")
+                                 .replace(/Ã“/g, "Ó").replace(/Ãš/g, "Ú")
+                                 .replace(/Ã /g, "Í").replace(/Â/g, "");
+            
+            // Conservar puramente letras, espacios y guiones comunes
+            resultado = resultado.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ\s-]/g, "");
+            return resultado.replace(/\s+/g, " ").trim();
+        }
+
+        function limpiarFechaDni(texto) {
+            if (!texto) return "No disponible";
+            return texto.trim().replace(/[^0-9/]/g, "");
+        }
+
+        // Parser inteligente compatible con TODOS los formatos de DNI (Viejos y Nuevos 2026)
+        function parsearDniArgentino(rawText) {
+            const campos = rawText.split('@');
+            if (campos.length < 5) return null;
+
+            let dni = "";
+            let apellido = "";
+            let nombre = "";
+            let sexo = "";
+            let fechanac = "No disponible";
+
+            // Detectar el formato basándonos en la posición del campo de Sexo (M o F)
+            // En formato clásico suele estar en pos 3. En los formatos nuevos cambia de lugar.
+            let indiceSexo = campos.findIndex(c => c.trim().toUpperCase() === 'M' || c.trim().toUpperCase() === 'F');
+
+            if (indiceSexo !== -1) {
+                sexo = campos[indiceSexo].trim().toUpperCase();
+                
+                // Formato NUEVO (DNI al principio, Ej: DNI@APELLIDO@NOMBRE@SEXO...)
+                if (indiceSexo === 3 && !isNaN(campos[0].trim())) {
+                    dni = campos[0].trim().replace(/[^0-9]/g, "");
+                    apellido = limpiarTextoDni(campos[1]);
+                    nombre = limpiarTextoDni(campos[2]);
+                    if (campos[5]) fechanac = limpiarFechaDni(campos[5]);
+                } 
+                // Formato TRADICIONAL (Ej: Trámite@APELLIDO@NOMBRE@SEXO@DNI...)
+                else {
+                    apellido = limpiarTextoDni(campos[1]);
+                    nombre = limpiarTextoDni(campos[2]);
+                    // El DNI suele ser el primer número largo que aparece después del sexo
+                    for (let i = indiceSexo + 1; i < campos.length; i++) {
+                        let num = campos[i].trim().replace(/[^0-9]/g, "");
+                        if (num.length >= 7 && num.length <= 9) {
+                            dni = num;
+                            break;
+                        }
+                    }
+                    if (campos[indiceSexo + 3]) fechanac = limpiarFechaDni(campos[indiceSexo + 3]);
+                }
+            }
+
+            // Si por alguna razón el algoritmo inteligente falla en ubicar el sexo, usamos mapeo estático seguro
+            if (!dni || !apellido) {
+                dni = campos[0].replace(/[^0-9]/g, "");
+                apellido = limpiarTextoDni(campos[1]);
+                nombre = limpiarTextoDni(campos[2]);
+                sexo = campos[3] ? campos[3].trim().toUpperCase() : "-";
+            }
+
+            // Validación final de datos obligatorios mínimos
+            if (!dni || dni.length < 6 || !apellido) return null;
+
+            return { dni, apellido, nombre, sexo, fechanac };
+        }
+
+        function mostrarFormularioRegistro(persona) {
+            document.getElementById('section-registro').classList.remove('hidden');
+            document.getElementById('res-dni').innerText = persona.dni;
+            document.getElementById('res-nombre').innerText = `${persona.apellido}, ${persona.nombre}`;
+            document.getElementById('res-sexo').innerText = persona.sexo === 'M' ? 'Masculino' : (persona.sexo === 'F' ? 'Femenino' : persona.sexo);
+            document.getElementById('res-nacimiento').innerText = persona.fechanac;
+            
+            const estaAdentro = personasAdentro[persona.dni];
+            const badge = document.getElementById('badge-tipo-movimiento');
+            const divObs = document.getElementById('div-observaciones');
+            const btnConfirmar = document.getElementById('btn-confirmar-registro');
+
+            if (estaAdentro) {
+                badge.innerText = "🚨 SALIDA DETECTADA (Marcará Salida)";
+                badge.className = "px-3 py-1 text-sm font-bold rounded-full bg-orange-100 text-orange-700";
+                divObs.classList.add('hidden');
+                btnConfirmar.innerText = "Registrar Salida Activa";
+                btnConfirmar.className = "bg-orange-600 hover:bg-orange-700 text-white font-medium px-6 py-2.5 rounded-xl transition shadow";
+            } else {
+                badge.innerText = "✅ INGRESO DETECTADO (Marcará Entrada)";
+                badge.className = "px-3 py-1 text-sm font-bold rounded-full bg-green-100 text-green-700";
+                divObs.classList.remove('hidden');
+                document.getElementById('txt-observaciones').value = "";
+                btnConfirmar.innerText = "Confirmar Ingreso";
+                btnConfirmar.className = "bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-2.5 rounded-xl transition shadow";
+            }
+        }
+
+        function procesarMovimiento() {
+            if (!objetoPersonaActual) return;
+            const dni = objetoPersonaActual.dni;
+            const timestampActual = new Date().toISOString();
+            const fechaLegible = new Date().toLocaleDateString();
+            const horaLegible = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            if (personasAdentro[dni]) {
+                const datosIngreso = personasAdentro[dni];
+                registrosLog.push({
+                    DNI: dni,
+                    Nombre: `${objetoPersonaActual.apellido}, ${objetoPersonaActual.nombre}`,
+                    Fecha: fechaLegible,
+                    'Hora Ingreso': datosIngreso.hora,
+                    'Hora Salida': horaLegible,
+                    Observaciones: datosIngreso.observaciones,
+                    Timestamp_Iso: timestampActual
+                });
+                delete personasAdentro[dni];
+            } else {
+                const obs = document.getElementById('txt-observaciones').value.trim();
+                personasAdentro[dni] = {
+                    nombre: `${objetoPersonaActual.apellido}, ${objetoPersonaActual.nombre}`,
+                    hora: horaLegible,
+                    fecha: fechaLegible,
+                    observaciones: obs || "Sin observaciones",
+                    Timestamp_Iso: timestampActual
+                };
+            }
+
+            localStorage.setItem('control_accesos_log', JSON.stringify(registrosLog));
+            localStorage.setItem('control_accesos_adentro', JSON.stringify(personasAdentro));
+            cancelarRegistro();
+            actualizarVistas();
+            alert("Movimiento asentado con éxito.");
+        }
+
+        function cancelarRegistro() {
+            objetoPersonaActual = null;
+            document.getElementById('section-registro').classList.add('hidden');
+        }
+
+        function actualizarVistas() {
+            const tbody = document.getElementById('tabla-adentro');
+            tbody.innerHTML = "";
+            const llavesAdentro = Object.keys(personasAdentro);
+            document.getElementById('count-adentro').innerText = llavesAdentro.length;
+
+            if (llavesAdentro.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 italic">No hay personas registradas adentro en este momento.</td></tr>`;
+            } else {
+                llavesAdentro.forEach(dni => {
+                    const p = personasAdentro[dni];
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="p-3 font-medium text-gray-900">${dni}</td>
+                            <td class="p-3 text-gray-700">${p.nombre}</td>
+                            <td class="p-3"><span class="bg-green-100 text-green-800 font-semibold px-2 py-0.5 rounded text-xs">${p.hora}</span></td>
+                            <td class="p-3 text-gray-500 text-xs max-w-xs truncate">${p.observaciones}</td>
+                        </tr>`;
+                });
+            }
+        }
+
+        function exportarExcel() {
+            const desde = document.getElementById('fecha-desde').value;
+            const hasta = document.getElementById('fecha-hasta').value;
+            if (!desde || !hasta) { alert("Selecciona ambas fechas."); return; }
+
+            const fechaInicio = new Date(desde + "T00:00:00");
+            const fechaFin = new Date(hasta + "T23:59:59");
+
+            const logsFiltrados = registrosLog.filter(log => {
+                const logDate = new Date(log.Timestamp_Iso);
+                return logDate >= fechaInicio && logDate <= fechaFin;
+            });
+
+            const activosAdentroFiltrados = [];
+            Object.keys(personasAdentro).forEach(dni => {
+                const p = personasAdentro[dni];
+                if (new Date(p.Timestamp_Iso) >= fechaInicio && new Date(p.Timestamp_Iso) <= fechaFin) {
+                    activosAdentroFiltrados.push({
+                        DNI: dni, Nombre: p.nombre, Fecha: p.fecha, 'Hora Ingreso': p.hora, 'Hora Salida': "AÚN ADENTRO", Observaciones: p.observaciones
+                    });
+                }
+            });
+
+            const reporteTotal = [...activosAdentroFiltrados, ...logsFiltrados];
+            if (reporteTotal.length === 0) { alert("Sin registros en este rango."); return; }
+
+            const wb = XLSX.utils.book_new();
+            const filasExcel = reporteTotal.map(item => ({
+                "Documento (DNI)": item.DNI, "Nombre y Apellido": item.Nombre, "Fecha": item.Fecha, "Hora Entrada": item['Hora Ingreso'], "Hora Salida": item['Hora Salida'], "Observaciones": item.Observaciones
+            }));
+            const ws = XLSX.utils.json_to_sheet(filasExcel);
+            XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+            XLSX.writeFile(wb, `Reporte_Accesos_${desde}_a_${hasta}.xlsx`);
+        }
+
+        function limpiarTodaLaBase() {
+            if (confirm("¿Vaciar por completo la base?")) {
+                localStorage.removeItem('control_accesos_log');
+                localStorage.removeItem('control_accesos_adentro');
+                registrosLog = []; personasAdentro = {};
+                actualizarVistas(); cancelarRegistro();
+            }
+        }
+    </script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const swContent = `
+                    self.addEventListener('install', e => self.skipWaiting());
+                    self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
+                `;
+                const blob = new Blob([swContent], {type: 'application/javascript'});
+                navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.log("SW error", err));
+            });
+        }
+    </script>
+</body>
+</html>
